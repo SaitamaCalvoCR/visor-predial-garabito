@@ -1,4 +1,3 @@
-﻿# Visor Predial â€” Garabito
+﻿# Visor Predial de Garabito
 
-Mapa catastral interactivo de Garabito, coloreado por distrito (JacÃ³, TÃ¡rcoles, Lagunillas).
-Teselas vectoriales estÃ¡ticas + Leaflet. Publicado con GitHub Pages.
+Mapa catastral interactivo de Garabito, coloreado por distrito (Jacó, Tárcoles, Lagunillas).
