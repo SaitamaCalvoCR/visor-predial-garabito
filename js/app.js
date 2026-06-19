@@ -98,3 +98,44 @@ const CAMPOS = [
   ["regularidad_geom", "Regularidad geométrica"],
   ["pendiente_media", "Pendiente media", (v) => v == null ? "—" : Number(v).toFixed(1) + "°"],
   ["inclinacion", "Inclinación"]
+];
+
+function mostrarFicha(p) {
+  const dist = DISTRITOS[("" + p.distrito).trim()];
+  const subtitulo = dist ? `<div class="ficha-sub"><span class="dot" style="background:${dist.color}"></span>${dist.nombre}</div>` : "";
+  const rows = CAMPOS.map(([k, label, f]) => {
+    const val = f ? f(p[k]) : fmt(p[k]);
+    return `<div class="row"><span class="k">${label}</span><span class="v">${val}</span></div>`;
+  }).join("");
+  document.getElementById("ficha-body").innerHTML = subtitulo + rows;
+}
+
+document.getElementById("ficha-close").addEventListener("click", () => {
+  if (selectedId !== null) { predios.resetFeatureStyle(selectedId); selectedId = null; }
+  document.getElementById("ficha-body").innerHTML =
+    '<p class="hint">Haz clic en un predio para ver su información.</p>';
+});
+
+function buildLegend() {
+  const items = [
+    ["Jacó", "#f5a623"], ["Tárcoles", "#57b4e6"], ["Lagunillas", "#7bbe3e"], ["Otro / sin dato", COLOR_OTRO]
+  ];
+  document.getElementById("legend").innerHTML =
+    `<div class="lg-title">Distrito</div>` +
+    items.map(([t, c]) => `<div class="lg-row"><span class="sw" style="background:${c}"></span>${t}</div>`).join("");
+}
+
+L.control.layers(
+  { "Híbrido": hibrido, "Satélite": satelite, "OpenStreetMap": osm, "Claro (Carto)": carto },
+  { "Predios": predios },
+  { collapsed: false }
+).addTo(map);
+
+function setStatus(text, color) {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  if (color) el.style.color = color;
+}
+
+buildLegend();
+setStatus("conectando…");
