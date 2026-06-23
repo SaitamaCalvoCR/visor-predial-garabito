@@ -8,6 +8,8 @@ const TILE_BASE = "http://127.0.0.1:7800";
 const LAYER_ID = "public.v_predios";
 const TILE_URL = "tiles/{z}/{x}/{y}.pbf";
 const DATA_URL = "data/predios_index.json";
+const AUX_VECTOR_MANIFEST_URL = "layers/capas_auxiliares_manifest.json";
+const AUX_RASTER_MANIFEST_URL = "layers/rasters/rasters_manifest.json";
 const CENTER = [9.7077, -84.6152];
 const ZOOM = 12;
 const MAXZOOM = 19;
@@ -41,6 +43,9 @@ let activeBaseKey = "hibrido";
 let activeStyleMode = "district";
 let layerOpacity = 0.6;
 let filteredProblems = [];
+let auxLayerDefs = new Map();
+let auxLayers = new Map();
+let activeAuxLayers = new Set();
 
 // ===================== Utilidades =====================
 const numberCR = new Intl.NumberFormat("es-CR", { maximumFractionDigits: 0 });
@@ -207,6 +212,10 @@ function setStatus(text, color) {
 
 // ===================== Mapa + capas base =====================
 const map = L.map("map", { minZoom: 8, maxZoom: MAXZOOM, zoomControl: true }).setView(CENTER, ZOOM);
+map.createPane("aux-raster");
+map.getPane("aux-raster").style.zIndex = 360;
+map.createPane("aux-vector");
+map.getPane("aux-vector").style.zIndex = 620;
 
 const baseLayers = {
   osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -304,6 +313,193 @@ function redrawPredios() {
     predios.addTo(map);
   }
   if (selectedId !== null) predios.setFeatureStyle(selectedId, HIGHLIGHT);
+}
+
+// ===================== Capas auxiliares SNIT y análisis =====================
+const AUX_VECTOR_LEGENDS = {
+  roads: [
+    ["Ruta nacional", "#e11d48", 4.2, ""],
+    ["Camino", "#f59e0b", 2.5, ""],
+    ["Vereda", "#7c3aed", 1.8, "4 4"],
+    ["Puente", "#111827", 5.0, "2 3"],
+    ["Vía local", "#475569", 2.0, ""]
+  ],
+  drainage: [["Red de drenaje", "#0284c7", 2.0, "6 4"]]
+};
+
+function setAuxStatus(text, tone = "") {
+  const el = $("aux-layer-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = tone ? `tone-${tone}` : "";
+}
+
+async function fetchOptionalJson(url) {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return await response.json();
+  } catch (error) {
+    console.warn(`No se pudo cargar ${url}`, error);
+    return null;
+  }
+}
+
+function registerAuxDefinitions(vectorManifest, rasterManifest) {
+  auxLayerDefs = new Map();
+  (vectorManifest?.vectors || []).forEach((item) => {
+    auxLayerDefs.set(item.id, {
+      ...item,
+      type: "vector",
+      opacity: item.id === "drainage" ? 0.85 : 0.95
+    });
+  });
+  (rasterManifest?.rasters || []).forEach((item) => {
+    auxLayerDefs.set(item.id, {
+      ...item,
+      type: "raster",
+      opacity: Number(item.opacity || 0.6)
+    });
+  });
+}
+
+function renderAuxLayerControls() {
+  const list = $("aux-layer-list");
+  if (!list) return;
+  const defs = [...auxLayerDefs.values()];
+  if (!defs.length) {
+    list.innerHTML = `<div class="empty-state">No encontré capas auxiliares. Ejecuta el script de preparación para generarlas.</div>`;
+    setAuxStatus("sin capas", "warn");
+    return;
+  }
+  list.innerHTML = defs.map((def) => {
+    const detail = def.type === "vector"
+      ? `${numberCR.format(def.features || 0)} elementos`
+      : "raster georreferenciado";
+    const value = Math.round(Number(def.opacity || 0.65) * 100);
+    return `
+      <div class="aux-layer-item">
+        <label class="check-row aux-check">
+          <input type="checkbox" data-aux-toggle="${escapeHtml(def.id)}" />
+          <span><strong>${escapeHtml(def.title)}</strong><small>${escapeHtml(detail)}</small></span>
+        </label>
+        <label class="aux-opacity">
+          <span>Opacidad</span>
+          <input type="range" min="15" max="100" value="${value}" data-aux-opacity="${escapeHtml(def.id)}" />
+        </label>
+      </div>
+    `;
+  }).join("");
+
+  list.querySelectorAll("[data-aux-toggle]").forEach((input) => {
+    input.addEventListener("change", (event) => toggleAuxLayer(event.target.dataset.auxToggle, event.target.checked));
+  });
+  list.querySelectorAll("[data-aux-opacity]").forEach((input) => {
+    input.addEventListener("input", (event) => setAuxLayerOpacity(event.target.dataset.auxOpacity, Number(event.target.value) / 100));
+  });
+  setAuxStatus(`${defs.length} disponibles`, "ok");
+}
+
+function auxFeatureStyle(feature, def) {
+  const props = feature?.properties || {};
+  const width = Number(props.stroke_width || (def.id === "drainage" ? 2 : 2.4));
+  return {
+    color: props.stroke || (def.id === "drainage" ? "#0284c7" : "#475569"),
+    weight: width,
+    opacity: Number(def.opacity || 0.9),
+    dashArray: props.stroke_dasharray || "",
+    lineCap: "round",
+    lineJoin: "round"
+  };
+}
+
+function auxPopup(feature, def) {
+  const p = feature?.properties || {};
+  if (def.id === "drainage") {
+    return `<strong>Drenaje SNIT</strong><br>${fmt(p.nombre || p.categoria || "Red de drenaje")}`;
+  }
+  const route = hasValue(p.num_ruta) ? `Ruta ${escapeHtml(p.num_ruta)}` : fmt(p.via_clase || "Vía");
+  const rows = [
+    ["Clase", fmt(p.via_clase)],
+    ["Categoría", fmt(p.categoria)],
+    ["Nombre", fmt(p.nombre)],
+    ["Longitud", fmtNumber(p.longitud_m, " m")]
+  ];
+  return `<strong>${route}</strong>` + rows.map(([label, value]) => `<br><span>${escapeHtml(label)}:</span> ${value}`).join("");
+}
+
+async function ensureAuxLayer(id) {
+  if (auxLayers.has(id)) return auxLayers.get(id);
+  const def = auxLayerDefs.get(id);
+  if (!def) return null;
+
+  if (def.type === "raster") {
+    const layer = L.imageOverlay(def.url, def.bounds, {
+      pane: "aux-raster",
+      opacity: Number(def.opacity || 0.6),
+      interactive: false
+    });
+    auxLayers.set(id, layer);
+    return layer;
+  }
+
+  const response = await fetch(def.url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`No se pudo cargar ${def.url}`);
+  const data = await response.json();
+  const layer = L.geoJSON(data, {
+    pane: "aux-vector",
+    style: (feature) => auxFeatureStyle(feature, def),
+    onEachFeature: (feature, featureLayer) => featureLayer.bindPopup(auxPopup(feature, def))
+  });
+  auxLayers.set(id, layer);
+  return layer;
+}
+
+async function toggleAuxLayer(id, enabled) {
+  const def = auxLayerDefs.get(id);
+  if (!def) return;
+  try {
+    if (enabled) {
+      setAuxStatus(`cargando ${def.title.toLowerCase()}...`, "warn");
+      const layer = await ensureAuxLayer(id);
+      if (!layer) return;
+      layer.addTo(map);
+      if (typeof layer.bringToFront === "function") layer.bringToFront();
+      activeAuxLayers.add(id);
+    } else {
+      const layer = auxLayers.get(id);
+      if (layer && map.hasLayer(layer)) map.removeLayer(layer);
+      activeAuxLayers.delete(id);
+    }
+    setAuxStatus(`${activeAuxLayers.size || auxLayerDefs.size} ${activeAuxLayers.size ? "activas" : "disponibles"}`, activeAuxLayers.size ? "ok" : "");
+    buildLegend();
+  } catch (error) {
+    console.error(error);
+    setAuxStatus(`error en ${def.title}`, "danger");
+  }
+}
+
+function setAuxLayerOpacity(id, opacity) {
+  const def = auxLayerDefs.get(id);
+  if (!def) return;
+  def.opacity = opacity;
+  const layer = auxLayers.get(id);
+  if (!layer) return;
+  if (typeof layer.setOpacity === "function") {
+    layer.setOpacity(opacity);
+  } else if (typeof layer.setStyle === "function") {
+    layer.setStyle((feature) => auxFeatureStyle(feature, def));
+  }
+  buildLegend();
+}
+
+async function loadAuxiliaryLayers() {
+  const [vectorManifest, rasterManifest] = await Promise.all([
+    fetchOptionalJson(AUX_VECTOR_MANIFEST_URL),
+    fetchOptionalJson(AUX_RASTER_MANIFEST_URL)
+  ]);
+  registerAuxDefinitions(vectorManifest, rasterManifest);
+  renderAuxLayerControls();
 }
 
 // ===================== Render de dashboard =====================
@@ -562,8 +758,23 @@ function buildLegend() {
     title = "Pendiente";
     items = [["< 15°", "#16a34a"], ["15° - 24,9°", "#eab308"], ["25° - 34,9°", "#f97316"], [">= 35°", "#dc2626"], ["Sin dato", "#94a3b8"]];
   }
-  $("legend").innerHTML = `<div class="lg-title">${escapeHtml(title)}</div>` +
+  let html = `<div class="lg-title">${escapeHtml(title)}</div>` +
     items.map(([label, color]) => `<div class="lg-row"><span class="sw" style="background:${color}"></span>${escapeHtml(label)}</div>`).join("");
+
+  activeAuxLayers.forEach((id) => {
+    const def = auxLayerDefs.get(id);
+    if (!def) return;
+    const vectorItems = AUX_VECTOR_LEGENDS[id];
+    html += `<div class="lg-title aux-title">${escapeHtml(def.title)}</div>`;
+    if (vectorItems) {
+      html += vectorItems.map(([label, color, weight, dash]) => `
+        <div class="lg-row"><span class="sw line-sw" style="border-top:${weight}px ${dash ? "dashed" : "solid"} ${color}"></span>${escapeHtml(label)}</div>
+      `).join("");
+    } else if (Array.isArray(def.legend)) {
+      html += def.legend.map(([label, color]) => `<div class="lg-row"><span class="sw" style="background:${color}"></span>${escapeHtml(label)}</div>`).join("");
+    }
+  });
+  $("legend").innerHTML = html;
 }
 
 // ===================== Ficha del predio =====================
@@ -703,8 +914,13 @@ async function loadDataIndex() {
 bindUi();
 buildLegend();
 setStatus("conectando...");
+loadAuxiliaryLayers().catch((error) => {
+  console.error(error);
+  setAuxStatus("error al cargar", "danger");
+});
 loadDataIndex().catch((error) => {
   console.error(error);
   setStatus("Mapa sin índice", "#fca5a5");
   $("quality-cards").innerHTML = `<div class="empty-state">No se pudo cargar el índice de predios. El mapa puede seguir funcionando, pero los paneles de calidad no estarán disponibles.</div>`;
 });
+

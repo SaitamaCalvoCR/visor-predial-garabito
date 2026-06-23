@@ -408,6 +408,69 @@ tbody tr:hover { background: #f8fbff; }
   display: grid;
   gap: 12px;
 }
+.section-subtitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+}
+.section-subtitle small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+.section-subtitle small.tone-ok { color: var(--ok); }
+.section-subtitle small.tone-warn { color: var(--warn); }
+.section-subtitle small.tone-danger { color: var(--danger); }
+.aux-layer-block {
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+.aux-layer-list {
+  display: grid;
+  gap: 10px;
+}
+.aux-layer-item {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.aux-check {
+  align-items: flex-start;
+}
+.aux-check span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.aux-check strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+.aux-check small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.aux-opacity {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.aux-opacity input {
+  min-height: 24px;
+  padding: 0;
+}
 #global-search { margin-bottom: 10px; }
 .search-row {
   width: 100%;
@@ -435,6 +498,11 @@ tbody tr:hover { background: #f8fbff; }
   font-size: 12px;
 }
 .legend .lg-title { margin-bottom: 8px; font-weight: 850; }
+.legend .aux-title {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 .legend .lg-row {
   display: flex;
   align-items: center;
@@ -447,6 +515,15 @@ tbody tr:hover { background: #f8fbff; }
   flex: 0 0 auto;
   border-radius: 3px;
   border: 1px solid rgba(15, 23, 42, .25);
+}
+.legend .line-sw {
+  width: 24px;
+  height: 0;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
 }
 
 .status-pill,

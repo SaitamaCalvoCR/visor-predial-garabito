@@ -1,0 +1,132 @@
+{
+  "rasters": [
+    {
+      "id": "dem",
+      "title": "DEM / MDE",
+      "type": "image",
+      "url": "layers/rasters/dem.png",
+      "bounds": [
+        [
+          9.536339019566471,
+          -84.70173201642193
+        ],
+        [
+          9.879017506205846,
+          -84.52858157602698
+        ]
+      ],
+      "opacity": 0.58,
+      "legend": [
+        [
+          "Bajo",
+          "#216654"
+        ],
+        [
+          "Medio",
+          "#c9a85e"
+        ],
+        [
+          "Alto",
+          "#f2eeda"
+        ]
+      ]
+    },
+    {
+      "id": "hidrologia",
+      "title": "Hidrología",
+      "type": "image",
+      "url": "layers/rasters/hidrologia.png",
+      "bounds": [
+        [
+          9.536339019566471,
+          -84.70173201642193
+        ],
+        [
+          9.879017506205846,
+          -84.52858157602698
+        ]
+      ],
+      "opacity": 0.75,
+      "legend": [
+        [
+          "Red de drenaje modelada",
+          "#0e74bf"
+        ]
+      ]
+    },
+    {
+      "id": "uso_suelo",
+      "title": "Uso de suelo",
+      "type": "image",
+      "url": "layers/rasters/uso_suelo.png",
+      "bounds": [
+        [
+          9.53625453262344,
+          -84.70178124740657
+        ],
+        [
+          9.87907186227184,
+          -84.52847106015167
+        ]
+      ],
+      "opacity": 0.62,
+      "legend": [
+        [
+          "Vegetación / baja presión",
+          "#1f7845"
+        ],
+        [
+          "Cobertura media",
+          "#84bc58"
+        ],
+        [
+          "Uso agropecuario / transición",
+          "#f4c542"
+        ],
+        [
+          "Urbano / alta presión",
+          "#e76f51"
+        ]
+      ]
+    },
+    {
+      "id": "riesgo",
+      "title": "Riesgo / susceptibilidad",
+      "type": "image",
+      "url": "layers/rasters/riesgo.png",
+      "bounds": [
+        [
+          9.536339019566471,
+          -84.70173201642193
+        ],
+        [
+          9.879017506205846,
+          -84.52858157602698
+        ]
+      ],
+      "opacity": 0.62,
+      "legend": [
+        [
+          "Muy baja",
+          "#16a34a"
+        ],
+        [
+          "Baja",
+          "#84cc16"
+        ],
+        [
+          "Media",
+          "#eab308"
+        ],
+        [
+          "Alta",
+          "#f97316"
+        ],
+        [
+          "Muy alta",
+          "#dc2626"
+        ]
+      ]
+    }
+  ]
+}

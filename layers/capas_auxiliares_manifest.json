@@ -1,0 +1,31 @@
+{
+  "wfs": "https://geos.snitcr.go.cr/be/IGN_200/wfs",
+  "wms": "https://geos.snitcr.go.cr/be/IGN_200/wms",
+  "bbox_wgs84": [
+    -84.70174038965493,
+    9.536553314391814,
+    -84.52861660570319,
+    9.878806188438112
+  ],
+  "vectors": [
+    {
+      "id": "roads",
+      "title": "Vías SNIT",
+      "url": "layers/vector/vias_garabito.geojson",
+      "features": 58,
+      "classes": {
+        "Ruta nacional": 13,
+        "Camino": 45
+      }
+    },
+    {
+      "id": "drainage",
+      "title": "Drenaje SNIT",
+      "url": "layers/vector/drenaje_snit_garabito.geojson",
+      "features": 50,
+      "classes": {
+        "Red de drenaje": 50
+      }
+    }
+  ]
+}
