@@ -46,7 +46,7 @@
           -84.52858157602698
         ]
       ],
-      "opacity": 0.75,
+      "opacity": 0.86,
       "legend": [
         [
           "Red de drenaje modelada",
@@ -69,23 +69,47 @@
           -84.52847106015167
         ]
       ],
-      "opacity": 0.62,
+      "opacity": 0.82,
       "legend": [
         [
-          "Vegetación / baja presión",
-          "#1f7845"
+          "Bosque / cobertura arbórea",
+          "#1b7837"
         ],
         [
-          "Cobertura media",
-          "#84bc58"
+          "Manglar",
+          "#006d2c"
         ],
         [
-          "Uso agropecuario / transición",
-          "#f4c542"
+          "Yolillal",
+          "#74c476"
         ],
         [
-          "Urbano / alta presión",
-          "#e76f51"
+          "Humedales",
+          "#41b6c4"
+        ],
+        [
+          "Cultivos",
+          "#fdae61"
+        ],
+        [
+          "Pastizales",
+          "#f46d43"
+        ],
+        [
+          "Urbano / construido",
+          "#d73027"
+        ],
+        [
+          "Otras tierras naturales",
+          "#b8a06a"
+        ],
+        [
+          "Otras tierras artificiales",
+          "#7f0000"
+        ],
+        [
+          "Páramo / alta montaña",
+          "#c2a5cf"
         ]
       ]
     },
@@ -104,7 +128,7 @@
           -84.52858157602698
         ]
       ],
-      "opacity": 0.62,
+      "opacity": 0.76,
       "legend": [
         [
           "Muy baja",

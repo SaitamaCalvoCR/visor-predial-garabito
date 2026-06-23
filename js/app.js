@@ -318,13 +318,13 @@ function redrawPredios() {
 // ===================== Capas auxiliares SNIT y análisis =====================
 const AUX_VECTOR_LEGENDS = {
   roads: [
-    ["Ruta nacional", "#e11d48", 4.2, ""],
-    ["Camino", "#f59e0b", 2.5, ""],
-    ["Vereda", "#7c3aed", 1.8, "4 4"],
-    ["Puente", "#111827", 5.0, "2 3"],
-    ["Vía local", "#475569", 2.0, ""]
+    ["Ruta nacional", "#f97316", 5.2, ""],
+    ["Camino", "#facc15", 3.4, ""],
+    ["Vereda", "#8b5cf6", 2.2, "4 4"],
+    ["Puente", "#111827", 6.0, "2 2"],
+    ["Vía local", "#64748b", 2.4, ""]
   ],
-  drainage: [["Red de drenaje", "#0284c7", 2.0, "6 4"]]
+  drainage: [["Red de drenaje", "#0284c7", 2.3, "6 4"]]
 };
 
 function setAuxStatus(text, tone = "") {
@@ -400,13 +400,14 @@ function renderAuxLayerControls() {
   setAuxStatus(`${defs.length} disponibles`, "ok");
 }
 
-function auxFeatureStyle(feature, def) {
+function auxFeatureStyle(feature, def, casing = false) {
   const props = feature?.properties || {};
   const width = Number(props.stroke_width || (def.id === "drainage" ? 2 : 2.4));
+  const outlineWidth = Number(props.stroke_outline_width || width + 2);
   return {
-    color: props.stroke || (def.id === "drainage" ? "#0284c7" : "#475569"),
-    weight: width,
-    opacity: Number(def.opacity || 0.9),
+    color: casing ? props.stroke_outline || "#ffffff" : props.stroke || (def.id === "drainage" ? "#0284c7" : "#475569"),
+    weight: casing ? outlineWidth : width,
+    opacity: casing ? Math.min(1, Number(def.opacity || 0.9) + 0.08) : Number(def.opacity || 0.9),
     dashArray: props.stroke_dasharray || "",
     lineCap: "round",
     lineJoin: "round"
@@ -446,11 +447,18 @@ async function ensureAuxLayer(id) {
   const response = await fetch(def.url, { cache: "no-store" });
   if (!response.ok) throw new Error(`No se pudo cargar ${def.url}`);
   const data = await response.json();
-  const layer = L.geoJSON(data, {
+  const casing = L.geoJSON(data, {
+    pane: "aux-vector",
+    style: (feature) => auxFeatureStyle(feature, def, true),
+    interactive: false
+  });
+  const main = L.geoJSON(data, {
     pane: "aux-vector",
     style: (feature) => auxFeatureStyle(feature, def),
     onEachFeature: (feature, featureLayer) => featureLayer.bindPopup(auxPopup(feature, def))
   });
+  const layer = L.layerGroup([casing, main]);
+  layer._auxVectorLayers = [casing, main];
   auxLayers.set(id, layer);
   return layer;
 }
@@ -465,6 +473,7 @@ async function toggleAuxLayer(id, enabled) {
       if (!layer) return;
       layer.addTo(map);
       if (typeof layer.bringToFront === "function") layer.bringToFront();
+      else if (Array.isArray(layer._auxVectorLayers)) layer._auxVectorLayers.forEach((subLayer) => subLayer.bringToFront());
       activeAuxLayers.add(id);
     } else {
       const layer = auxLayers.get(id);
@@ -487,6 +496,10 @@ function setAuxLayerOpacity(id, opacity) {
   if (!layer) return;
   if (typeof layer.setOpacity === "function") {
     layer.setOpacity(opacity);
+  } else if (Array.isArray(layer._auxVectorLayers)) {
+    layer._auxVectorLayers.forEach((subLayer, index) => {
+      subLayer.setStyle((feature) => auxFeatureStyle(feature, def, index === 0));
+    });
   } else if (typeof layer.setStyle === "function") {
     layer.setStyle((feature) => auxFeatureStyle(feature, def));
   }
@@ -923,4 +936,3 @@ loadDataIndex().catch((error) => {
   setStatus("Mapa sin índice", "#fca5a5");
   $("quality-cards").innerHTML = `<div class="empty-state">No se pudo cargar el índice de predios. El mapa puede seguir funcionando, pero los paneles de calidad no estarán disponibles.</div>`;
 });
-
