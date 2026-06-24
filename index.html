@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Visor Predial - Garabito</title>
+  <link rel="icon" href="assets/aterum-icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -11,8 +12,12 @@
   <div id="app">
     <header id="topbar">
       <div class="brand-block">
-        <span class="brand">Visor Predial</span>
-        <span class="canton">Garabito</span>
+        <img class="company-logo" src="assets/aterum-logo.svg" alt="Aterum" />
+        <span class="brand-separator" aria-hidden="true"></span>
+        <div class="product-brand">
+          <span class="brand">Visor Predial</span>
+          <span class="canton">Garabito</span>
+        </div>
       </div>
       <div class="top-metrics" aria-live="polite">
         <span>Total: <strong id="metric-total-top">-</strong></span>

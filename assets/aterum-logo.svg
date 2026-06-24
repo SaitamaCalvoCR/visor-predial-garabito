@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 82" role="img" aria-labelledby="title desc">
+  <title id="title">Aterum</title>
+  <desc id="desc">Logotipo Aterum en blanco con acentos azules.</desc>
+  <defs>
+    <filter id="soft-shadow" x="-20%" y="-25%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <g filter="url(#soft-shadow)">
+    <path d="M17 61 L39 20 Q44 10 50 20 L73 61" fill="none" stroke="#f8fbff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M50 38 L34 61 H66 Z" fill="#0075ed"/>
+    <g fill="#f8fbff" font-family="Inter, Montserrat, Segoe UI, Arial, sans-serif" font-size="34" font-weight="760" letter-spacing="8">
+      <text x="99" y="60">AT</text>
+      <text x="202" y="60">RUM</text>
+    </g>
+    <g fill="#0075ed">
+      <rect x="164" y="30" width="27" height="5.5" rx="2.75"/>
+      <rect x="164" y="43" width="27" height="5.5" rx="2.75"/>
+      <rect x="164" y="56" width="27" height="5.5" rx="2.75"/>
+    </g>
+  </g>
+</svg>
