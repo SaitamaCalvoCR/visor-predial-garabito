@@ -4,10 +4,10 @@
  */
 
 // ===================== Configuración =====================
-const TILE_BASE = "http://127.0.0.1:7800";
 const LAYER_ID = "public.v_predios";
 const TILE_URL = "tiles/{z}/{x}/{y}.pbf";
 const DATA_URL = "data/predios_index.json";
+const STATS_URL = "data/stats_index.json";
 const AUX_VECTOR_MANIFEST_URL = "layers/capas_auxiliares_manifest.json";
 const AUX_RASTER_MANIFEST_URL = "layers/rasters/rasters_manifest.json";
 const CENTER = [9.7077, -84.6152];
@@ -15,6 +15,15 @@ const ZOOM = 12;
 const MAXZOOM = 19;
 const HIGH_SLOPE = 25;
 const SMALL_AREA = 25;
+
+// Cobertura real de la pirámide de teselas de predios (dist/tiles). Fuera de este
+// rectángulo (con margen) no existen .pbf: limitar el layer evita 404 al paniar/alejar.
+const TILE_MIN_ZOOM = 10;
+const TILE_MAX_NATIVE_ZOOM = 16;
+const PREDIOS_BOUNDS = L.latLngBounds(
+  [9.5145, -84.7237],
+  [9.9008, -84.5066]
+);
 
 const DISTRITOS = {
   "01": { nombre: "Jacó", color: "#f59e0b" },
@@ -58,6 +67,13 @@ const currencyCR = new Intl.NumberFormat("es-CR", {
 
 function $(id) {
   return document.getElementById(id);
+}
+
+function normalizeSearch(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
 }
 
 function hasValue(value) {
@@ -111,9 +127,11 @@ function normalizeRecord(source = {}) {
     fid,
     distrito_nombre: source.distrito_nombre || distritoInfo(source.distrito).nombre
   };
-  if (!record.issues) record.issues = detectIssues(record).issues;
-  if (!record.priority) record.priority = classifyPriority(record).priority;
-  if (!record.estado) record.estado = classifyPriority(record).estado;
+  record.issues = detectIssues(record).issues;
+  const classified = classifyPriority(record);
+  record.priority = classified.priority;
+  record.estado = classified.estado;
+  record.issue_score = classified.score;
   return record;
 }
 
@@ -189,18 +207,7 @@ function enrichRecords(rawRecords) {
     numero_finca: countByValue(rawRecords, "numero_finca"),
     plano: countByValue(rawRecords, "plano")
   };
-  return rawRecords.map((record) => {
-    const normalized = normalizeRecord(record);
-    const detected = detectIssues(normalized).issues;
-    const classified = classifyPriority({ ...normalized, issues: detected });
-    return {
-      ...normalized,
-      issues: record.issues || detected,
-      issue_score: record.issue_score ?? classified.score,
-      priority: record.priority || classified.priority,
-      estado: record.estado || classified.estado
-    };
-  });
+  return rawRecords.map((record) => normalizeRecord(record));
 }
 
 function setStatus(text, color) {
@@ -211,7 +218,13 @@ function setStatus(text, color) {
 }
 
 // ===================== Mapa + capas base =====================
-const map = L.map("map", { minZoom: 8, maxZoom: MAXZOOM, zoomControl: true }).setView(CENTER, ZOOM);
+const MOBILE_QUERY = window.matchMedia("(max-width: 820px)");
+
+const map = L.map("map", { minZoom: 8, maxZoom: MAXZOOM, zoomControl: false }).setView(CENTER, ZOOM);
+L.control.zoom({ position: MOBILE_QUERY.matches ? "topright" : "topleft" }).addTo(map);
+MOBILE_QUERY.addEventListener("change", (event) => {
+  map.zoomControl.setPosition(event.matches ? "topright" : "topleft");
+});
 map.createPane("aux-raster");
 map.getPane("aux-raster").style.zIndex = 360;
 map.createPane("aux-vector");
@@ -292,7 +305,9 @@ const HIGHLIGHT = {
 const predios = L.vectorGrid.protobuf(TILE_URL, {
   rendererFactory: L.svg.tile,
   interactive: true,
-  maxNativeZoom: 16,
+  bounds: PREDIOS_BOUNDS,
+  minNativeZoom: TILE_MIN_ZOOM,
+  maxNativeZoom: TILE_MAX_NATIVE_ZOOM,
   getFeatureId: (feature) => feature.properties.fid,
   vectorTileLayerStyles: { [LAYER_ID]: estiloPredio }
 }).addTo(map);
@@ -302,8 +317,18 @@ predios.on("click", (event) => {
   selectRecord(record, { centerMap: false });
   L.DomEvent.stop(event);
 });
-predios.on("load", () => setStatus(records.length ? "Listo" : "Cargando datos", "#86efac"));
-predios.on("tileerror", () => setStatus("Sin teselas", "#fca5a5"));
+
+// La exportación estática de teselas omite las que no tienen features (bordes del
+// cantón, huecos internos): un 404 aislado ahí es esperado, no un fallo real. Solo
+// avisamos "Sin teselas" si nunca llegó a cargar ninguna tesela con éxito.
+let prediosLoadedOnce = false;
+predios.on("load", () => {
+  prediosLoadedOnce = true;
+  setStatus(records.length ? "Listo" : "Cargando datos", "#86efac");
+});
+predios.on("tileerror", () => {
+  if (!prediosLoadedOnce) setStatus("Sin teselas", "#fca5a5");
+});
 
 function redrawPredios() {
   if (typeof predios.redraw === "function") {
@@ -336,7 +361,7 @@ function setAuxStatus(text, tone = "") {
 
 async function fetchOptionalJson(url) {
   try {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return await response.json();
   } catch (error) {
@@ -444,7 +469,7 @@ async function ensureAuxLayer(id) {
     return layer;
   }
 
-  const response = await fetch(def.url, { cache: "no-store" });
+  const response = await fetch(def.url);
   if (!response.ok) throw new Error(`No se pudo cargar ${def.url}`);
   const data = await response.json();
   const casing = L.geoJSON(data, {
@@ -535,11 +560,7 @@ function computeStats(items) {
   };
 }
 
-function renderDashboard(meta = {}) {
-  const stats = computeStats(records);
-  $("metric-total-top").textContent = numberCR.format(stats.total);
-  $("metric-updated-top").textContent = meta.generated_at ? new Date(meta.generated_at).toLocaleDateString("es-CR") : "Sin dato";
-
+function renderQualityCards(stats) {
   const cards = [
     ["Total de predios", stats.total, "Cantidad general de predios cargados.", "good"],
     ["Sin código predial", stats.missingCode, "Registros sin identificador predial.", stats.missingCode ? "critical" : "good"],
@@ -564,13 +585,38 @@ function renderDashboard(meta = {}) {
     <div class="legend-row"><span>Incompletos</span><strong>${numberCR.format(stats.total - stats.complete - stats.review)}</strong></div>
     <div class="legend-row"><span>Requieren revisión</span><strong>${numberCR.format(stats.review)}</strong></div>
   `;
+}
 
-  const issueCounts = new Map();
-  records.forEach((record) => record.issues.forEach((issue) => issueCounts.set(issue, (issueCounts.get(issue) || 0) + 1)));
-  const ranking = [...issueCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7);
+function renderIssueRanking(rankingEntries) {
+  const ranking = rankingEntries.slice(0, 7);
   $("issue-ranking").innerHTML = ranking.length ? ranking.map(([issue, count]) => `
     <div class="rank-row"><span>${escapeHtml(issue)}</span><strong>${numberCR.format(count)}</strong></div>
   `).join("") : `<div class="empty-state">No se detectaron alertas con los criterios actuales.</div>`;
+}
+
+function renderTopMetrics(total, generatedAt) {
+  $("metric-total-top").textContent = numberCR.format(total);
+  $("metric-updated-top").textContent = generatedAt ? new Date(generatedAt).toLocaleDateString("es-CR") : "Sin dato";
+}
+
+// Pinta el dashboard al instante con el resumen agregado (data/stats_index.json,
+// ~1 KB) mientras el índice completo de predios (varios MB) sigue cargando en paralelo.
+function renderDashboardPreview(statsPayload) {
+  renderTopMetrics(statsPayload.total, statsPayload.generated_at);
+  renderQualityCards({ ...statsPayload.quality, total: statsPayload.total });
+  renderIssueRanking(statsPayload.issue_ranking || []);
+  if (Array.isArray(statsPayload.districts)) renderDistrictGroups(statsPayload.districts);
+}
+
+function renderDashboard(meta = {}) {
+  const stats = computeStats(records);
+  renderTopMetrics(stats.total, meta.generated_at);
+  renderQualityCards(stats);
+
+  const issueCounts = new Map();
+  records.forEach((record) => record.issues.forEach((issue) => issueCounts.set(issue, (issueCounts.get(issue) || 0) + 1)));
+  const ranking = [...issueCounts.entries()].sort((a, b) => b[1] - a[1]);
+  renderIssueRanking(ranking);
 }
 
 // ===================== Tabla de problemas =====================
@@ -586,7 +632,7 @@ function populateFilters() {
 }
 
 function getProblemRows() {
-  const query = $("problem-search").value.trim().toLowerCase();
+  const query = normalizeSearch($("problem-search").value.trim());
   const district = $("problem-district").value;
   const issue = $("problem-type").value;
   const priority = $("problem-priority").value;
@@ -598,7 +644,7 @@ function getProblemRows() {
     if (priority !== "Todas" && record.priority !== priority) return false;
     if (!query) return true;
     return [record.id_predial, record.numero_finca, record.plano, record.distrito_nombre]
-      .some((value) => String(value || "").toLowerCase().includes(query));
+      .some((value) => normalizeSearch(value).includes(query));
   }).sort((a, b) => (b.issue_score || 0) - (a.issue_score || 0));
 }
 
@@ -697,7 +743,10 @@ function groupByDistrict() {
 }
 
 function renderDistrictStats() {
-  const groups = groupByDistrict();
+  renderDistrictGroups(groupByDistrict());
+}
+
+function renderDistrictGroups(groups) {
   const max = Math.max(...groups.map((g) => g.count), 1);
   $("district-bars").innerHTML = groups.map((g) => `
     <div class="bar-row">
@@ -724,13 +773,13 @@ function renderDistrictStats() {
 
 // ===================== Búsqueda, capas y leyenda =====================
 function renderSearchResults() {
-  const query = $("global-search").value.trim().toLowerCase();
+  const query = normalizeSearch($("global-search").value.trim());
   if (!query) {
     $("search-results").innerHTML = `<div class="empty-state">Escribe un código, finca, plano o distrito para buscar.</div>`;
     return;
   }
   const results = records.filter((record) => [record.id_predial, record.numero_finca, record.plano, record.distrito_nombre]
-    .some((value) => String(value || "").toLowerCase().includes(query))).slice(0, 12);
+    .some((value) => normalizeSearch(value).includes(query))).slice(0, 12);
   $("search-results").innerHTML = results.length ? results.map((record) => `
     <button class="search-row" type="button" data-fid="${escapeHtml(record.fid)}">
       <span><strong>${fmt(record.id_predial)}</strong><br>${fmt(record.distrito_nombre)} · finca ${fmt(record.numero_finca)}</span>
@@ -847,6 +896,7 @@ function selectRecord(record, options = {}) {
   selectedId = fid;
   predios.setFeatureStyle(selectedId, HIGHLIGHT);
   renderFicha(record);
+  $("ficha").classList.add("open");
   if (options.centerMap && Array.isArray(record.center)) {
     map.setView(record.center, Math.max(map.getZoom(), 17), { animate: true });
   }
@@ -858,6 +908,7 @@ function clearSelection() {
     selectedId = null;
   }
   $("ficha-body").innerHTML = `<p class="hint">Haz clic en un predio o selecciona un registro de la tabla.</p>`;
+  $("ficha").classList.remove("open");
 }
 
 // ===================== Eventos de UI =====================
@@ -872,7 +923,8 @@ function bindUi() {
   });
 
   $("left-panel-toggle").addEventListener("click", () => {
-    $("left-panel").classList.toggle("collapsed");
+    const collapsed = $("left-panel").classList.toggle("collapsed");
+    $("workspace").classList.toggle("left-collapsed", collapsed);
     setTimeout(() => map.invalidateSize(), 260);
   });
   $("ficha-close").addEventListener("click", clearSelection);
@@ -904,12 +956,22 @@ function bindUi() {
     layerOpacity = Number(event.target.value) / 100;
     redrawPredios();
   });
+
+  if (MOBILE_QUERY.matches) {
+    $("left-panel").classList.add("collapsed");
+    $("workspace").classList.add("left-collapsed");
+  }
 }
 
 // ===================== Inicialización =====================
+async function loadStatsPreview() {
+  const stats = await fetchOptionalJson(STATS_URL);
+  if (stats) renderDashboardPreview(stats);
+}
+
 async function loadDataIndex() {
   setStatus("Cargando índice", "#fde68a");
-  const response = await fetch(DATA_URL, { cache: "no-store" });
+  const response = await fetch(DATA_URL);
   if (!response.ok) throw new Error(`No se pudo cargar ${DATA_URL}`);
   const payload = await response.json();
   records = enrichRecords(payload.records || []);
@@ -931,6 +993,7 @@ loadAuxiliaryLayers().catch((error) => {
   console.error(error);
   setAuxStatus("error al cargar", "danger");
 });
+loadStatsPreview().catch((error) => console.warn("No se pudo precargar el resumen agregado", error));
 loadDataIndex().catch((error) => {
   console.error(error);
   setStatus("Mapa sin índice", "#fca5a5");
