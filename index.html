@@ -39,6 +39,7 @@
         <nav class="module-tabs" aria-label="Módulos del visor">
           <button class="tab active" type="button" data-view="dashboard">Dashboard</button>
           <button class="tab" type="button" data-view="quality">Problemas</button>
+          <button class="tab" type="button" data-view="fiscal">Fiscal</button>
           <button class="tab" type="button" data-view="districts">Distritos</button>
           <button class="tab" type="button" data-view="tools">Capas y búsqueda</button>
         </nav>
@@ -107,6 +108,55 @@
           </div>
         </section>
 
+        <section id="view-fiscal" class="module-view">
+          <div id="fiscal-cards" class="stat-grid"></div>
+          <article class="surface fiscal-note">
+            <strong>Demo ejecutivo</strong>
+            <span>Datos fiscales, patentes y licencias son ficticios, generados para demostrar integración municipal.</span>
+          </article>
+          <div class="filter-grid">
+            <label>
+              Buscar
+              <input id="fiscal-search" type="search" placeholder="Código, finca, patente o actividad" autocomplete="off" />
+            </label>
+            <label>
+              Impuesto predial
+              <select id="fiscal-predial"></select>
+            </label>
+            <label>
+              Patente
+              <select id="fiscal-patente"></select>
+            </label>
+            <label>
+              Licencia
+              <select id="fiscal-licencia"></select>
+            </label>
+          </div>
+          <div class="table-actions">
+            <p id="fiscal-count">Cargando estado fiscal...</p>
+            <div>
+              <button id="clear-fiscal-filters" class="secondary-button" type="button">Limpiar filtros</button>
+              <button id="export-fiscal-csv" class="primary-button" type="button">Exportar CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="fiscal-table">
+              <thead>
+                <tr>
+                  <th>Código predial</th>
+                  <th>Impuesto</th>
+                  <th class="num">Deuda predial</th>
+                  <th>Patente</th>
+                  <th>Licencia</th>
+                  <th>Actividad</th>
+                  <th class="num">Score</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
         <section id="view-districts" class="module-view">
           <div id="district-bars" class="bar-list"></div>
           <div class="table-wrap compact">
@@ -161,6 +211,7 @@
                 <select id="style-mode">
                   <option value="district">Distritos</option>
                   <option value="quality">Calidad de datos</option>
+                  <option value="fiscal">Estado fiscal demo</option>
                   <option value="priority">Prioridad de revisión</option>
                   <option value="slope">Pendiente</option>
                 </select>
@@ -175,7 +226,7 @@
                   <small id="aux-layer-status">Preparando capas...</small>
                 </div>
                 <div id="aux-layer-list" class="aux-layer-list">
-                  <div class="empty-state">Cargando vías, drenaje, DEM y riesgos.</div>
+                  <div class="empty-state">Cargando vías, drenaje, DEM y susceptibilidad.</div>
                 </div>
               </div>
             </div>

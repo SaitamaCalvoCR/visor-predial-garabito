@@ -10,7 +10,7 @@
   "vectors": [
     {
       "id": "roads",
-      "title": "Vías SNIT",
+      "title": "Vías Garabito",
       "url": "layers/vector/vias_garabito.geojson",
       "features": 58,
       "classes": {
@@ -20,7 +20,7 @@
     },
     {
       "id": "drainage",
-      "title": "Drenaje SNIT",
+      "title": "Drenaje Garabito",
       "url": "layers/vector/drenaje_snit_garabito.geojson",
       "features": 50,
       "classes": {

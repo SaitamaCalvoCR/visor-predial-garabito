@@ -115,7 +115,7 @@
     },
     {
       "id": "riesgo",
-      "title": "Riesgo / susceptibilidad",
+      "title": "Susceptibilidad preliminar relativa",
       "type": "image",
       "url": "layers/rasters/riesgo.png",
       "bounds": [
@@ -131,23 +131,23 @@
       "opacity": 0.76,
       "legend": [
         [
-          "Muy baja",
+          "Muy baja (relativa)",
           "#16a34a"
         ],
         [
-          "Baja",
+          "Baja (relativa)",
           "#84cc16"
         ],
         [
-          "Media",
+          "Media (relativa)",
           "#eab308"
         ],
         [
-          "Alta",
+          "Alta (relativa)",
           "#f97316"
         ],
         [
-          "Muy alta",
+          "Muy alta (relativa)",
           "#dc2626"
         ]
       ]

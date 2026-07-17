@@ -423,7 +423,7 @@ def raster_layer_specs(catastro: Path):
         },
         {
             "id": "riesgo",
-            "title": "Riesgo / susceptibilidad",
+            "title": "Susceptibilidad preliminar relativa",
             "path": susc / "09_Indice_Susceptibilidad" / "susceptibilidad_garabito_clases_1_5.tif",
             "opacity": 0.76,
             "max_size": 3200,
@@ -437,11 +437,11 @@ def raster_layer_specs(catastro: Path):
                 (5, 215, 48, 39, 245),
             ],
             "legend": [
-                ["Muy baja", "#16a34a"],
-                ["Baja", "#84cc16"],
-                ["Media", "#eab308"],
-                ["Alta", "#f97316"],
-                ["Muy alta", "#dc2626"],
+                ["Muy baja (relativa)", "#16a34a"],
+                ["Baja (relativa)", "#84cc16"],
+                ["Media (relativa)", "#eab308"],
+                ["Alta (relativa)", "#f97316"],
+                ["Muy alta (relativa)", "#dc2626"],
             ],
         },
     ]
@@ -506,7 +506,7 @@ def prepare_vectors(catastro: Path, output_layers: Path, copy_targets: list[Path
         manifest["vectors"].append(
             {
                 "id": key,
-                "title": "Vías SNIT" if key == "roads" else "Drenaje SNIT",
+                "title": "Vías Garabito" if key == "roads" else "Drenaje Garabito",
                 "url": f"layers/vector/{geojson.name}",
                 "features": count,
                 "classes": class_count,
@@ -541,7 +541,7 @@ def main():
     catastro = Path(args.base_catastro)
     visor = Path(args.visor_root)
     output_layers = ensure_dir(catastro / "13_Visor_Capas")
-    copy_targets = [] if args.no_sync_visor else [visor / "frontend", visor / "dist"]
+    copy_targets = [] if args.no_sync_visor else [visor]
 
     if args.solo in ("todo", "vias"):
         prepare_vectors(catastro, output_layers, copy_targets)

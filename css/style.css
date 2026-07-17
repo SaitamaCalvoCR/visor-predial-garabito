@@ -168,7 +168,7 @@ button { cursor: pointer; }
 
 .module-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   padding: 10px;
   border-bottom: 1px solid var(--line);
@@ -250,6 +250,7 @@ button { cursor: pointer; }
   font-size: 24px;
   font-weight: 850;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 .stat-help {
   margin: 8px 0 0;
@@ -263,6 +264,21 @@ button { cursor: pointer; }
   gap: 12px;
 }
 .surface { padding: 12px; }
+.fiscal-note {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+  background: #f8fbff;
+}
+.fiscal-note strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+.fiscal-note span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .section-title {
   display: flex;
   align-items: baseline;
@@ -574,6 +590,11 @@ tbody tr:hover { background: #f8fbff; }
 .chip.danger { background: var(--danger-soft); color: var(--danger); }
 .status-pill.info,
 .chip.info { background: var(--info-soft); color: var(--info); }
+.chip.neutral { background: #eef2f7; color: #475569; }
+.score-cell {
+  font-weight: 850;
+  color: var(--ink);
+}
 .ficha-section {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);

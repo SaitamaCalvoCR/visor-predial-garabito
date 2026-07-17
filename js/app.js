@@ -42,6 +42,13 @@ const QUALITY_COLORS = {
   Incompleto: "#d97706",
   "Requiere revisión": "#dc2626"
 };
+const FISCAL_COLORS = {
+  "Al dia": "#16a34a",
+  "Exonerado / especial": "#0ea5e9",
+  "Arreglo de pago": "#d97706",
+  Moroso: "#dc2626",
+  "Sin dato": "#94a3b8"
+};
 
 // ===================== Estado global =====================
 let records = [];
@@ -52,6 +59,7 @@ let activeBaseKey = "hibrido";
 let activeStyleMode = "district";
 let layerOpacity = 0.6;
 let filteredProblems = [];
+let filteredFiscal = [];
 let auxLayerDefs = new Map();
 let auxLayers = new Map();
 let activeAuxLayers = new Set();
@@ -121,7 +129,7 @@ function distritoInfo(code) {
 }
 
 function normalizeRecord(source = {}) {
-  const fid = source.fid ?? source.id;
+  const fid = source.fid ?? source.fid_publicacion ?? source.id;
   const record = {
     ...source,
     fid,
@@ -136,7 +144,7 @@ function normalizeRecord(source = {}) {
 }
 
 function mergeWithIndex(props = {}) {
-  const fid = props.fid ?? props.id;
+  const fid = props.fid ?? props.fid_publicacion ?? props.id;
   const indexed = recordsByFid.get(String(fid));
   return indexed ? { ...indexed, ...props, issues: indexed.issues, priority: indexed.priority, estado: indexed.estado } : normalizeRecord(props);
 }
@@ -267,6 +275,10 @@ function qualityColor(record) {
   return QUALITY_COLORS[record.estado] || QUALITY_COLORS.Incompleto;
 }
 
+function fiscalColor(record) {
+  return FISCAL_COLORS[record.impuesto_predial_estado] || FISCAL_COLORS["Sin dato"];
+}
+
 function slopeColor(record) {
   const slope = Number(record.pendiente_media);
   if (!Number.isFinite(slope)) return "#94a3b8";
@@ -279,28 +291,37 @@ function slopeColor(record) {
 function featureFill(props) {
   const record = mergeWithIndex(props);
   if (activeStyleMode === "quality") return qualityColor(record);
+  if (activeStyleMode === "fiscal") return fiscalColor(record);
   if (activeStyleMode === "priority") return PRIORITY_COLORS[record.priority] || PRIORITY_COLORS["Sin alertas"];
   if (activeStyleMode === "slope") return slopeColor(record);
   return distritoColor(record.distrito);
 }
 
+function overzoomStrokeWeight(baseWeight) {
+  const overzoom = Math.max(0, map.getZoom() - TILE_MAX_NATIVE_ZOOM);
+  return Math.max(0.06, baseWeight / (2 ** overzoom));
+}
+
 function estiloPredio(props) {
   return {
-    weight: 0.55,
-    color: "#1f2937",
+    weight: overzoomStrokeWeight(0.45),
+    color: "#000000",
+    opacity: 0.9,
     fill: true,
     fillColor: featureFill(props || {}),
     fillOpacity: layerOpacity
   };
 }
 
-const HIGHLIGHT = {
-  weight: 2.8,
-  color: "#0f172a",
-  fill: true,
-  fillColor: "#ffffff",
-  fillOpacity: 0.45
-};
+function highlightStyle() {
+  return {
+    weight: overzoomStrokeWeight(2.2),
+    color: "#000000",
+    fill: true,
+    fillColor: "#ffffff",
+    fillOpacity: 0.45
+  };
+}
 
 const predios = L.vectorGrid.protobuf(TILE_URL, {
   rendererFactory: L.svg.tile,
@@ -337,10 +358,12 @@ function redrawPredios() {
     map.removeLayer(predios);
     predios.addTo(map);
   }
-  if (selectedId !== null) predios.setFeatureStyle(selectedId, HIGHLIGHT);
+  if (selectedId !== null) predios.setFeatureStyle(selectedId, highlightStyle());
 }
 
-// ===================== Capas auxiliares SNIT y análisis =====================
+map.on("zoomend", redrawPredios);
+
+// ===================== Capas auxiliares y análisis =====================
 const AUX_VECTOR_LEGENDS = {
   roads: [
     ["Ruta nacional", "#f97316", 5.2, ""],
@@ -442,7 +465,7 @@ function auxFeatureStyle(feature, def, casing = false) {
 function auxPopup(feature, def) {
   const p = feature?.properties || {};
   if (def.id === "drainage") {
-    return `<strong>Drenaje SNIT</strong><br>${fmt(p.nombre || p.categoria || "Red de drenaje")}`;
+    return `<strong>Drenaje Garabito</strong><br>${fmt(p.nombre || p.categoria || "Red de drenaje")}`;
   }
   const route = hasValue(p.num_ruta) ? `Ruta ${escapeHtml(p.num_ruta)}` : fmt(p.via_clase || "Vía");
   const rows = [
@@ -606,6 +629,7 @@ function renderDashboardPreview(statsPayload) {
   renderQualityCards({ ...statsPayload.quality, total: statsPayload.total });
   renderIssueRanking(statsPayload.issue_ranking || []);
   if (Array.isArray(statsPayload.districts)) renderDistrictGroups(statsPayload.districts);
+  if (statsPayload.fiscal) renderFiscalCards(statsPayload.fiscal);
 }
 
 function renderDashboard(meta = {}) {
@@ -617,6 +641,122 @@ function renderDashboard(meta = {}) {
   records.forEach((record) => record.issues.forEach((issue) => issueCounts.set(issue, (issueCounts.get(issue) || 0) + 1)));
   const ranking = [...issueCounts.entries()].sort((a, b) => b[1] - a[1]);
   renderIssueRanking(ranking);
+}
+
+// ===================== Demo fiscal, patentes y licencias =====================
+function fiscalPill(value) {
+  const text = value || "Sin dato";
+  let tone = "neutral";
+  if (["Al dia", "Patente al dia", "Vigente", "Exonerado / especial"].includes(text)) tone = "ok";
+  else if (["Arreglo de pago", "Por vencer"].includes(text)) tone = "warn";
+  else if (["Moroso", "Patente morosa", "Patente suspendida", "Vencida"].includes(text)) tone = "danger";
+  return `<span class="chip ${tone}">${escapeHtml(text)}</span>`;
+}
+
+function renderFiscalCards(summary = null) {
+  const source = summary || {};
+  const predial = source.predial || {};
+  const patentes = source.patentes || {};
+  const licencias = source.licencias || {};
+  const totalDeudaPredial = source.total_deuda_predial_crc ?? records.reduce((sum, r) => sum + Number(r.deuda_predial_crc || 0), 0);
+  const totalDeudaPatente = source.total_deuda_patente_crc ?? records.reduce((sum, r) => sum + Number(r.deuda_patente_crc || 0), 0);
+  const conPatente = source.predios_con_patente ?? records.filter((r) => r.patente_estado && r.patente_estado !== "Sin patente").length;
+  const criticos = source.casos_criticos ?? records.filter((r) => Number(r.fiscal_score || 0) >= 60).length;
+  const morosos = predial.Moroso ?? records.filter((r) => r.impuesto_predial_estado === "Moroso").length;
+  const licenciasVencidas = licencias.Vencida ?? records.filter((r) => r.licencia_estado === "Vencida").length;
+  const patenteMorosa = (patentes["Patente morosa"] || 0) + (patentes["Patente suspendida"] || 0);
+
+  $("fiscal-cards").innerHTML = [
+    ["Predial moroso", morosos, "Predios con deuda predial ficticia.", morosos ? "critical" : "good"],
+    ["Deuda predial", fmtMoney(totalDeudaPredial), "Monto sintético acumulado.", totalDeudaPredial ? "warning" : "good"],
+    ["Predios con patente", conPatente, "Patentes comerciales ficticias asociadas.", "good"],
+    ["Patentes morosas", patenteMorosa, "Patentes morosas o suspendidas ficticias.", patenteMorosa ? "critical" : "good"],
+    ["Licencias vencidas", licenciasVencidas, "Licencias ficticias fuera de vigencia.", licenciasVencidas ? "critical" : "good"],
+    ["Casos críticos", criticos, "Score fiscal demo igual o mayor a 60.", criticos ? "warning" : "good"]
+  ].map(([label, value, help, tone]) => `
+    <article class="stat-card ${tone}" title="${escapeHtml(help)}">
+      <p class="stat-label">${escapeHtml(label)}</p>
+      <p class="stat-value">${typeof value === "number" ? numberCR.format(value) : value}</p>
+      <p class="stat-help">${escapeHtml(help)}</p>
+    </article>
+  `).join("");
+}
+
+function populateFiscalFilters() {
+  const predial = ["Todos", ...[...new Set(records.map((r) => r.impuesto_predial_estado || "Sin dato"))].sort((a, b) => a.localeCompare(b, "es"))];
+  const patente = ["Todas", ...[...new Set(records.map((r) => r.patente_estado || "Sin dato"))].sort((a, b) => a.localeCompare(b, "es"))];
+  const licencia = ["Todas", ...[...new Set(records.map((r) => r.licencia_estado || "Sin dato"))].sort((a, b) => a.localeCompare(b, "es"))];
+  $("fiscal-predial").innerHTML = predial.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  $("fiscal-patente").innerHTML = patente.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  $("fiscal-licencia").innerHTML = licencia.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+}
+
+function getFiscalRows() {
+  const query = normalizeSearch($("fiscal-search").value.trim());
+  const predial = $("fiscal-predial").value;
+  const patente = $("fiscal-patente").value;
+  const licencia = $("fiscal-licencia").value;
+  return records.filter((record) => {
+    if (predial !== "Todos" && (record.impuesto_predial_estado || "Sin dato") !== predial) return false;
+    if (patente !== "Todas" && (record.patente_estado || "Sin dato") !== patente) return false;
+    if (licencia !== "Todas" && (record.licencia_estado || "Sin dato") !== licencia) return false;
+    if (!query) return true;
+    return [record.id_predial, record.numero_finca, record.plano, record.patente_numero, record.patente_actividad]
+      .some((value) => normalizeSearch(value).includes(query));
+  }).sort((a, b) => Number(b.fiscal_score || 0) - Number(a.fiscal_score || 0));
+}
+
+function renderFiscalTable() {
+  filteredFiscal = getFiscalRows();
+  const maxRows = 350;
+  const shown = filteredFiscal.slice(0, maxRows);
+  $("fiscal-count").textContent = `${numberCR.format(filteredFiscal.length)} predios fiscales${filteredFiscal.length > maxRows ? ` (${maxRows} visibles)` : ""}`;
+  const tbody = $("fiscal-table").querySelector("tbody");
+  tbody.innerHTML = shown.length ? shown.map((record) => `
+    <tr data-fid="${escapeHtml(record.fid)}">
+      <td>${fmt(record.id_predial)}</td>
+      <td>${fiscalPill(record.impuesto_predial_estado)}</td>
+      <td class="num">${fmtMoney(record.deuda_predial_crc || 0)}</td>
+      <td>${fiscalPill(record.patente_estado)}</td>
+      <td>${fiscalPill(record.licencia_estado)}</td>
+      <td>${fmt(record.patente_actividad, "Sin patente")}</td>
+      <td class="num score-cell">${numberCR.format(Number(record.fiscal_score || 0))}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="7"><div class="empty-state">No hay registros para los filtros activos.</div></td></tr>`;
+
+  tbody.querySelectorAll("tr[data-fid]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const record = recordsByFid.get(row.dataset.fid);
+      if (record) selectRecord(record, { centerMap: true });
+    });
+  });
+}
+
+function exportFiscalCsv() {
+  const header = ["Código predial", "Finca", "Impuesto predial", "Deuda predial CRC", "Último pago", "Patente", "Número patente", "Actividad", "Deuda patente CRC", "Licencia", "Vigencia", "Score", "Alertas"];
+  const rows = filteredFiscal.map((record) => [
+    record.id_predial || "",
+    record.numero_finca || "",
+    record.impuesto_predial_estado || "",
+    Number(record.deuda_predial_crc || 0),
+    record.ultimo_pago_predial || "",
+    record.patente_estado || "",
+    record.patente_numero || "",
+    record.patente_actividad || "",
+    Number(record.deuda_patente_crc || 0),
+    record.licencia_estado || "",
+    record.licencia_vigencia_hasta || "",
+    Number(record.fiscal_score || 0),
+    (record.fiscal_alertas || []).join("; ")
+  ]);
+  const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "demo_fiscal_predios_garabito.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 // ===================== Tabla de problemas =====================
@@ -813,6 +953,9 @@ function buildLegend() {
   if (activeStyleMode === "quality") {
     title = "Calidad de datos";
     items = Object.entries(QUALITY_COLORS);
+  } else if (activeStyleMode === "fiscal") {
+    title = "Estado fiscal demo";
+    items = Object.entries(FISCAL_COLORS);
   } else if (activeStyleMode === "priority") {
     title = "Prioridad";
     items = Object.entries(PRIORITY_COLORS);
@@ -877,13 +1020,27 @@ function renderFicha(record) {
       ${fieldRow("Zona homogénea", fmt(enriched.zona_homogenea))}
       ${fieldRow("Valor terreno por zona homogénea", fmtMoney(enriched.valor_terreno_zh))}
       ${fieldRow("Valor estimado del predio", Number.isFinite(estimatedValue) ? fmtMoney(estimatedValue) : "Sin dato")}
-      ${fieldRow("Riesgo", fmt(enriched.riesgo))}
+      ${fieldRow("Susceptibilidad relativa", fmt(enriched.riesgo))}
       ${fieldRow("Prioridad fiscalización", fmt(enriched.prioridad_fiscalizacion))}
+    </div>
+    <div class="ficha-section">
+      <h3>Demo fiscal y patentes</h3>
+      ${fieldRow("Impuesto predial", fiscalPill(enriched.impuesto_predial_estado))}
+      ${fieldRow("Deuda predial", fmtMoney(enriched.deuda_predial_crc || 0))}
+      ${fieldRow("Último pago", fmt(enriched.ultimo_pago_predial))}
+      ${fieldRow("Patente", fiscalPill(enriched.patente_estado))}
+      ${fieldRow("Nº patente", fmt(enriched.patente_numero))}
+      ${fieldRow("Actividad", fmt(enriched.patente_actividad))}
+      ${fieldRow("Deuda patente", fmtMoney(enriched.deuda_patente_crc || 0))}
+      ${fieldRow("Licencia", fiscalPill(enriched.licencia_estado))}
+      ${fieldRow("Vigencia licencia", fmt(enriched.licencia_vigencia_hasta))}
+      ${fieldRow("Score fiscal demo", fmtNumber(enriched.fiscal_score || 0))}
     </div>
     <div class="ficha-section">
       <h3>Alertas</h3>
       <div class="chip-list">
         ${issues.length ? issues.map((issue) => `<span class="chip ${issue.includes("duplicad") || issue.includes("Sin código") || issue.includes("Sin finca") ? "danger" : "warn"}">${escapeHtml(issue)}</span>`).join("") : `<span class="chip ok">Sin alertas</span>`}
+        ${(enriched.fiscal_alertas || []).map((issue) => `<span class="chip danger">${escapeHtml(issue)}</span>`).join("")}
       </div>
     </div>
   `;
@@ -894,7 +1051,7 @@ function selectRecord(record, options = {}) {
   if (!hasValue(fid)) return;
   if (selectedId !== null) predios.resetFeatureStyle(selectedId);
   selectedId = fid;
-  predios.setFeatureStyle(selectedId, HIGHLIGHT);
+  predios.setFeatureStyle(selectedId, highlightStyle());
   renderFicha(record);
   $("ficha").classList.add("open");
   if (options.centerMap && Array.isArray(record.center)) {
@@ -941,6 +1098,18 @@ function bindUi() {
     renderProblemsTable();
   });
   $("export-csv").addEventListener("click", exportProblemsCsv);
+  ["fiscal-search", "fiscal-predial", "fiscal-patente", "fiscal-licencia"].forEach((id) => {
+    $(id).addEventListener("input", renderFiscalTable);
+    $(id).addEventListener("change", renderFiscalTable);
+  });
+  $("clear-fiscal-filters").addEventListener("click", () => {
+    $("fiscal-search").value = "";
+    $("fiscal-predial").value = "Todos";
+    $("fiscal-patente").value = "Todas";
+    $("fiscal-licencia").value = "Todas";
+    renderFiscalTable();
+  });
+  $("export-fiscal-csv").addEventListener("click", exportFiscalCsv);
   $("global-search").addEventListener("input", renderSearchResults);
   $("base-layer-select").addEventListener("change", (event) => switchBaseLayer(event.target.value));
   $("predios-toggle").addEventListener("change", (event) => {
@@ -977,8 +1146,11 @@ async function loadDataIndex() {
   records = enrichRecords(payload.records || []);
   recordsByFid = new Map(records.map((record) => [String(record.fid), record]));
   renderDashboard(payload);
+  renderFiscalCards();
   populateFilters();
+  populateFiscalFilters();
   renderProblemsTable();
+  renderFiscalTable();
   renderDistrictStats();
   renderSearchResults();
   buildLegend();

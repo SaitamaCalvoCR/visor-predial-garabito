@@ -27,13 +27,74 @@ DISTRICT_COLORS = {
     "Lagunillas": "#65a30d",
 }
 HIGH_SLOPE = 25
+SMALL_AREA = 25
 
 
 def has_value(value):
     return value is not None and str(value).strip() != ""
 
 
+def enrich_for_stats(records):
+    duplicate_fields = ["id_predial", "numero_finca", "plano"]
+    counts = {field: defaultdict(int) for field in duplicate_fields}
+    for record in records:
+        for field in duplicate_fields:
+            value = str(record.get(field) or "").strip()
+            if value:
+                counts[field][value] += 1
+
+    district_names = {"01": "Jaco", "02": "Tarcoles", "03": "Lagunillas"}
+    for record in records:
+        issues = []
+        for field, missing_label, duplicate_label in [
+            ("id_predial", "Sin codigo predial", "Codigo predial duplicado"),
+            ("numero_finca", "Sin finca", "Finca duplicada"),
+            ("plano", "Sin plano", "Plano duplicado"),
+        ]:
+            value = str(record.get(field) or "").strip()
+            if not value:
+                issues.append(missing_label)
+            elif counts[field][value] > 1:
+                issues.append(duplicate_label)
+
+        area = record.get("area_m2")
+        if not isinstance(area, (int, float)) or area <= 0 or area < SMALL_AREA:
+            issues.append("Area sospechosa")
+        if not has_value(record.get("distrito")):
+            issues.append("Sin distrito")
+        slope = record.get("pendiente_media")
+        if isinstance(slope, (int, float)) and slope >= HIGH_SLOPE:
+            issues.append("Pendiente alta")
+        if "irregular" in str(record.get("regularidad_geom") or "").lower():
+            issues.append("Geometria irregular")
+        if record.get("frente_calle") in (False, 0):
+            issues.append("Sin frente a calle")
+
+        score = 0
+        for issue in issues:
+            if issue in ("Sin codigo predial", "Sin finca"):
+                score += 5
+            elif "duplicado" in issue.lower():
+                score += 4
+            elif issue in ("Sin plano", "Sin distrito"):
+                score += 3
+            elif issue in ("Pendiente alta", "Area sospechosa", "Geometria irregular"):
+                score += 2
+            else:
+                score += 1
+
+        district = str(record.get("distrito") or "").strip().zfill(2)
+        record["distrito_nombre"] = district_names.get(district, "Otro / sin dato")
+        record["issues"] = issues
+        record["issue_score"] = score
+        record["estado"] = "Completo" if score == 0 else "Incompleto"
+        record["priority"] = (
+            "Alta" if score >= 7 else "Media" if score >= 3 else "Baja" if score else "Sin alertas"
+        )
+
+
 def build_stats(records, generated_at):
+    enrich_for_stats(records)
     quality = dict(missingCode=0, missingFinca=0, missingPlano=0, duplicates=0, highSlope=0, complete=0, review=0)
     issue_counts = defaultdict(int)
     districts = {}
@@ -81,6 +142,13 @@ def build_stats(records, generated_at):
             g["valueCount"] += 1
         if record.get("issues"):
             g["problems"] += 1
+
+    quality["complete"] = sum(1 for r in records if r.get("issue_score", 0) == 0)
+    quality["review"] = sum(
+        1
+        for r in records
+        if r.get("issue_score", 0) >= 7 or len(r.get("issues") or []) >= 3
+    )
 
     # duplicates: quality["duplicates"] contado por-ocurrencia arriba duplicaria el conteo
     # de predios; recalcular como cantidad de predios con alguna alerta de duplicado.

@@ -67,6 +67,25 @@ El script:
 
 Última corrida: `predios_index.json` bajó de 9.37 MB a ~6.3 MB (-33 %).
 
+## Generar demo fiscal ficticio
+
+Para una demostración ejecutiva se agregó un enriquecimiento automático de datos
+fiscales sintéticos sobre el mismo índice predial:
+
+```powershell
+py -3 tools\generar_demo_fiscal.py
+```
+
+El script agrega a `data/predios_index.json` campos inventados y reproducibles por
+predio: estado de impuesto predial, deuda predial, último pago, estado de patente,
+número de patente, actividad, deuda de patente, estado/vigencia de licencia y un
+`fiscal_score`. También escribe el bloque `fiscal` en `data/stats_index.json`, usado
+por el tab **Fiscal** para pintar KPIs al instante.
+
+Estos datos no son oficiales ni municipales; se generan con una semilla estable
+para mostrar capacidades de integración catastro + cobro + patentes/licencias sin
+usar información sensible. La geometría y las teselas `.pbf` no se modifican.
+
 ## Regenerar capas auxiliares (vías, drenaje, DEM, hidrología, uso de suelo, riesgo)
 
 ```powershell
@@ -78,6 +97,20 @@ escribe los GeoJSON/PNG en `layers/`. También deja una copia en
 `C:\Catastros\Catastro_garabito\13_Visor_Capas`.
 
 ## Regenerar `tiles/`
+
+Actualizacion local: el visor puede sincronizar el indice y las teselas
+directamente desde el GeoPackage predial depurado, usando el motor de QGIS:
+
+```powershell
+& "C:\OSGeo4W\bin\python-qgis.bat" "tools\sincronizar_desde_catastro.py" `
+  --tiles-staging "tiles_staging"
+```
+
+El script genera `data/predios_index.json`, una fuente mínima en
+`work/predios_garabito_publicacion.gpkg` y la piramide XYZ z10-z16 en una carpeta
+de staging. Este flujo reemplaza para futuras corridas el proceso historico con
+PostGIS descrito abajo. Cada tesela nueva incluye un `fid_publicacion`; los
+atributos completos se resuelven desde `data/predios_index.json`.
 
 La pirámide de teselas `.pbf` **no se genera desde este repo**: se exportó una vez
 desde una base PostGIS con pg_tileserv/tippecanoe hacia `tiles/{z}/{x}/{y}.pbf`
