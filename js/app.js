@@ -4,12 +4,13 @@
  */
 
 // ===================== Configuración =====================
-const LAYER_ID = "public.v_predios";
-const TILE_URL = "tiles/{z}/{x}/{y}.pbf";
-const DATA_URL = "data/predios_index.json";
-const STATS_URL = "data/stats_index.json";
-const AUX_VECTOR_MANIFEST_URL = "layers/capas_auxiliares_manifest.json";
-const AUX_RASTER_MANIFEST_URL = "layers/rasters/rasters_manifest.json";
+const ASSET_VERSION = "20260717-3";
+const LAYER_ID = "predios";
+const TILE_URL = `tiles/{z}/{x}/{y}.pbf?v=${ASSET_VERSION}`;
+const DATA_URL = `data/predios_index.json?v=${ASSET_VERSION}`;
+const STATS_URL = `data/stats_index.json?v=${ASSET_VERSION}`;
+const AUX_VECTOR_MANIFEST_URL = `layers/capas_auxiliares_manifest.json?v=${ASSET_VERSION}`;
+const AUX_RASTER_MANIFEST_URL = `layers/rasters/rasters_manifest.json?v=${ASSET_VERSION}`;
 const CENTER = [9.7077, -84.6152];
 const ZOOM = 12;
 const MAXZOOM = 19;
@@ -330,7 +331,10 @@ const predios = L.vectorGrid.protobuf(TILE_URL, {
   minNativeZoom: TILE_MIN_ZOOM,
   maxNativeZoom: TILE_MAX_NATIVE_ZOOM,
   getFeatureId: (feature) => feature.properties.fid,
-  vectorTileLayerStyles: { [LAYER_ID]: estiloPredio }
+  vectorTileLayerStyles: {
+    [LAYER_ID]: estiloPredio,
+    "public.v_predios": estiloPredio
+  }
 }).addTo(map);
 
 predios.on("click", (event) => {
@@ -384,12 +388,36 @@ function setAuxStatus(text, tone = "") {
 
 async function fetchOptionalJson(url) {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return await response.json();
   } catch (error) {
     console.warn(`No se pudo cargar ${url}`, error);
     return null;
+  }
+}
+
+async function fetchRequiredJson(url, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+    }
+  }
+  throw lastError;
+}
+
+function runUiStep(name, callback, failures) {
+  try {
+    callback();
+  } catch (error) {
+    failures.push(name);
+    console.error(`No se pudo completar ${name}`, error);
   }
 }
 
@@ -1140,22 +1168,26 @@ async function loadStatsPreview() {
 
 async function loadDataIndex() {
   setStatus("Cargando índice", "#fde68a");
-  const response = await fetch(DATA_URL);
-  if (!response.ok) throw new Error(`No se pudo cargar ${DATA_URL}`);
-  const payload = await response.json();
+  const payload = await fetchRequiredJson(DATA_URL);
+  if (!Array.isArray(payload.records)) throw new Error("El índice no contiene una lista de predios válida");
   records = enrichRecords(payload.records || []);
   recordsByFid = new Map(records.map((record) => [String(record.fid), record]));
-  renderDashboard(payload);
-  renderFiscalCards();
-  populateFilters();
-  populateFiscalFilters();
-  renderProblemsTable();
-  renderFiscalTable();
-  renderDistrictStats();
-  renderSearchResults();
-  buildLegend();
   redrawPredios();
-  setStatus("Listo", "#86efac");
+
+  const failures = [];
+  [
+    ["el dashboard", () => renderDashboard(payload)],
+    ["los indicadores fiscales", () => renderFiscalCards()],
+    ["los filtros de calidad", () => populateFilters()],
+    ["los filtros fiscales", () => populateFiscalFilters()],
+    ["la tabla de problemas", () => renderProblemsTable()],
+    ["la tabla fiscal", () => renderFiscalTable()],
+    ["las estadísticas distritales", () => renderDistrictStats()],
+    ["la búsqueda", () => renderSearchResults()],
+    ["la leyenda", () => buildLegend()]
+  ].forEach(([name, callback]) => runUiStep(name, callback, failures));
+
+  setStatus(failures.length ? "Listo con advertencias" : "Listo", failures.length ? "#fde68a" : "#86efac");
 }
 
 bindUi();
@@ -1169,5 +1201,5 @@ loadStatsPreview().catch((error) => console.warn("No se pudo precargar el resume
 loadDataIndex().catch((error) => {
   console.error(error);
   setStatus("Mapa sin índice", "#fca5a5");
-  $("quality-cards").innerHTML = `<div class="empty-state">No se pudo cargar el índice de predios. El mapa puede seguir funcionando, pero los paneles de calidad no estarán disponibles.</div>`;
+  $("quality-cards").innerHTML = `<div class="empty-state">No se pudo descargar o interpretar el índice predial. Recarga la página para reintentar.</div>`;
 });

@@ -88,6 +88,11 @@ def main():
     require(vector_titles.get("drainage") == "Drenaje Garabito", "Rotulo de drenaje incorrecto")
     require(all("SNIT" not in title.upper() for title in vector_titles.values()), "Quedan fuentes en nombres visibles")
 
+    app_js = (ROOT / "js" / "app.js").read_text(encoding="utf-8")
+    require('const LAYER_ID = "predios";' in app_js, "El estilo no apunta a la capa MVT predios")
+    require('"public.v_predios": estiloPredio' in app_js, "Falta compatibilidad con teselas anteriores")
+    require('color: "#000000"' in app_js, "El limite predial no es negro")
+
     asset_paths = [item["url"] for item in raster_manifest["rasters"]]
     asset_paths += [item["url"] for item in auxiliary_manifest["vectors"]]
     for relative in asset_paths:
