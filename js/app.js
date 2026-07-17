@@ -4,7 +4,7 @@
  */
 
 // ===================== Configuración =====================
-const ASSET_VERSION = "20260717-3";
+const ASSET_VERSION = "20260717-4";
 const LAYER_ID = "predios";
 const TILE_URL = `tiles/{z}/{x}/{y}.pbf?v=${ASSET_VERSION}`;
 const DATA_URL = `data/predios_index.json?v=${ASSET_VERSION}`;
@@ -238,6 +238,23 @@ map.createPane("aux-raster");
 map.getPane("aux-raster").style.zIndex = 360;
 map.createPane("aux-vector");
 map.getPane("aux-vector").style.zIndex = 620;
+
+function patchVectorGridSvgTileRemoval() {
+  if (!L.SVG?.Tile?.prototype || L.SVG.Tile.prototype._garabitoRemovePatch) return;
+  L.SVG.Tile.prototype.removeFrom = function removeFrom(mapInstance) {
+    const targetMap = this._map || mapInstance;
+    if (this.options?.interactive && targetMap?._targets) {
+      Object.values(this._layers || {}).forEach((layer) => {
+        if (layer?._path) delete targetMap._targets[L.stamp(layer._path)];
+      });
+    }
+    delete this._map;
+    return this;
+  };
+  L.SVG.Tile.prototype._garabitoRemovePatch = true;
+}
+
+patchVectorGridSvgTileRemoval();
 
 const baseLayers = {
   osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

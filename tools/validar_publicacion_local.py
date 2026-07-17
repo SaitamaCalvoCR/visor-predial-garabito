@@ -3,15 +3,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import struct
 from pathlib import Path
 from urllib.request import urlopen
 
+from limpiar_teselas_mvt import feature_is_valid, read_field, read_varint
+
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_PREDIOS = 18_884
 EXPECTED_ZOOMS = set(range(10, 17))
+PREDIOS_BOUNDS = {
+    "south": 9.5145,
+    "west": -84.7237,
+    "north": 9.9008,
+    "east": -84.5066,
+}
 
 
 def require(condition: bool, message: str):
@@ -23,11 +32,62 @@ def load_json(relative_path: str):
     return json.loads((ROOT / relative_path).read_text(encoding="utf-8"))
 
 
+def lon_to_x(lon: float, zoom: int) -> int:
+    return int(math.floor((lon + 180.0) / 360.0 * (2**zoom)))
+
+
+def lat_to_y(lat: float, zoom: int) -> int:
+    lat_rad = math.radians(lat)
+    return int(
+        math.floor(
+            (1.0 - math.log(math.tan(lat_rad) + (1.0 / math.cos(lat_rad))) / math.pi)
+            / 2.0
+            * (2**zoom)
+        )
+    )
+
+
+def expected_tile_paths():
+    for zoom in EXPECTED_ZOOMS:
+        min_x = lon_to_x(PREDIOS_BOUNDS["west"], zoom)
+        max_x = lon_to_x(PREDIOS_BOUNDS["east"], zoom)
+        min_y = lat_to_y(PREDIOS_BOUNDS["north"], zoom)
+        max_y = lat_to_y(PREDIOS_BOUNDS["south"], zoom)
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                yield ROOT / "tiles" / str(zoom) / str(x) / f"{y}.pbf"
+
+
 def png_dimensions(path: Path) -> tuple[int, int]:
     with path.open("rb") as stream:
         header = stream.read(24)
     require(header[:8] == b"\x89PNG\r\n\x1a\n", f"PNG invalido: {path}")
     return struct.unpack(">II", header[16:24])
+
+
+def count_invalid_mvt_features(path: Path) -> int:
+    data = path.read_bytes()
+    if not data:
+        return 0
+
+    invalid = 0
+    pos = 0
+    while pos < len(data):
+        field_no, wire_type, value_start, end, _ = read_field(data, pos)
+        if field_no == 3 and wire_type == 2:
+            size, layer_start = read_varint(data, value_start)
+            layer_payload = data[layer_start : layer_start + size]
+            layer_pos = 0
+            while layer_pos < len(layer_payload):
+                layer_field, layer_wire, layer_value_start, layer_end, _ = read_field(layer_payload, layer_pos)
+                if layer_field == 2 and layer_wire == 2:
+                    feature_size, feature_start = read_varint(layer_payload, layer_value_start)
+                    feature_payload = layer_payload[feature_start : feature_start + feature_size]
+                    if not feature_is_valid(feature_payload):
+                        invalid += 1
+                layer_pos = layer_end
+        pos = end
+    return invalid
 
 
 def validate_http(base_url: str, paths: list[str]):
@@ -92,6 +152,7 @@ def main():
     require('const LAYER_ID = "predios";' in app_js, "El estilo no apunta a la capa MVT predios")
     require('"public.v_predios": estiloPredio' in app_js, "Falta compatibilidad con teselas anteriores")
     require('color: "#000000"' in app_js, "El limite predial no es negro")
+    require("patchVectorGridSvgTileRemoval" in app_js, "Falta parche de estabilidad de VectorGrid")
 
     asset_paths = [item["url"] for item in raster_manifest["rasters"]]
     asset_paths += [item["url"] for item in auxiliary_manifest["vectors"]]
@@ -104,12 +165,16 @@ def main():
 
     tiles = list((ROOT / "tiles").rglob("*.pbf"))
     zooms = {int(tile.relative_to(ROOT / "tiles").parts[0]) for tile in tiles}
-    require(len(tiles) == 1_463, f"Teselas: {len(tiles)}")
+    missing_tiles = [path for path in expected_tile_paths() if not path.exists()]
+    require(not missing_tiles, f"Faltan teselas vacias para evitar 404: {len(missing_tiles)}")
+    require(len(tiles) >= 1_463, f"Teselas: {len(tiles)}")
     require(zooms == EXPECTED_ZOOMS, f"Zooms: {sorted(zooms)}")
-    require(all(tile.stat().st_size > 0 for tile in tiles), "Hay teselas vacias")
+    require(any(tile.stat().st_size > 0 for tile in tiles), "No hay teselas con predios")
+    invalid_features = sum(count_invalid_mvt_features(tile) for tile in tiles)
+    require(invalid_features == 0, f"Features MVT invalidas: {invalid_features}")
 
     if args.url:
-        sample_tile = tiles[len(tiles) // 2].relative_to(ROOT).as_posix()
+        sample_tile = next(tile for tile in tiles if tile.stat().st_size > 0).relative_to(ROOT).as_posix()
         validate_http(
             args.url,
             [

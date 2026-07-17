@@ -22,7 +22,9 @@ STATS_PATH = ROOT / "data" / "stats_index.json"
 FIELDS_TO_DROP = ["observaciones", "issues", "issue_score", "priority", "estado", "distrito_nombre"]
 
 DISTRICT_COLORS = {
+    "Jaco": "#f59e0b",
     "Jacó": "#f59e0b",
+    "Tarcoles": "#0ea5e9",
     "Tárcoles": "#0ea5e9",
     "Lagunillas": "#65a30d",
 }
@@ -43,7 +45,7 @@ def enrich_for_stats(records):
             if value:
                 counts[field][value] += 1
 
-    district_names = {"01": "Jaco", "02": "Tarcoles", "03": "Lagunillas"}
+    district_names = {"01": "Jacó", "02": "Tárcoles", "03": "Lagunillas"}
     for record in records:
         issues = []
         for field, missing_label, duplicate_label in [

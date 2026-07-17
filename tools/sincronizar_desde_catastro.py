@@ -24,6 +24,9 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QUrl, QUrlQuery
 
+from completar_teselas_vacias import complete_empty_tiles
+from limpiar_teselas_mvt import clean_tiles
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SOURCE = Path(
@@ -159,12 +162,17 @@ def main():
 
     work_gpkg = ROOT / "work" / "predios_garabito_publicacion.gpkg"
     write_tile_source(gdf, work_gpkg)
-    write_tiles(work_gpkg, Path(args.tiles_staging), args.min_zoom, args.max_zoom)
+    tiles_staging = Path(args.tiles_staging)
+    write_tiles(work_gpkg, tiles_staging, args.min_zoom, args.max_zoom)
+    invalid_removed, corrected_tiles = clean_tiles(tiles_staging)
+    existing_tiles, created_empty, coverage_tiles = complete_empty_tiles(tiles_staging)
 
     print(f"Predios sincronizados: {len(records):,}")
     print(f"Indice: {index_path}")
     print(f"Fuente de teselas: {work_gpkg}")
-    print(f"Teselas staging: {args.tiles_staging}")
+    print(f"Teselas staging: {tiles_staging}")
+    print(f"Features MVT invalidas eliminadas: {invalid_removed:,} en {corrected_tiles:,} teselas")
+    print(f"Teselas vacias creadas: {created_empty:,} (cobertura total {coverage_tiles:,})")
 
 
 if __name__ == "__main__":
